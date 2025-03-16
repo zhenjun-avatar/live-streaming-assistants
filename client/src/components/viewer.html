@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Pixel Avatar</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #f0f0f0;
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+
+        canvas {
+            border: 2px solid #333;
+            border-radius: 8px;
+            margin: 20px;
+            background: white;
+            image-rendering: pixelated;
+            width: 256px;
+            height: 256px;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 300px;
+        }
+
+        input[type="text"] {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 100%;
+        }
+
+        .emotion-display {
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+        }
+
+        #status {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            padding: 5px 10px;
+            background: rgba(0,0,0,0.5);
+            color: red;
+            border-radius: 3px;
+        }
+
+        .chat-container {
+            width: 300px;
+            height: 400px;
+            border: 1px solid #ccc;
+            margin: 20px;
+            overflow-y: auto;
+        }
+
+        .message {
+            padding: 10px;
+            margin: 5px;
+            border-radius: 5px;
+        }
+
+        .user-message {
+            background: #007bff;
+            color: white;
+            margin-left: auto;
+        }
+
+        .agent-message {
+            background: #e9ecef;
+            color: black;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">Disconnected</div>
+    <h1>AI Pixel Avatar</h1>
+    <div id="avatar-container"></div>
+    <div class="chat-container">
+        <div class="chat-messages" id="messages"></div>
+    </div>
+    <div class="controls">
+        <input type="text" id="textInput" placeholder="Type something to chat...">
+        <div class="emotion-display" id="emotionDisplay">Current emotion: neutral</div>
+    </div>
+
+    <script>
+        class PixelAvatarSystem {
+            constructor(container, size = 64) {
+                this.canvas = document.createElement('canvas');
+                container.appendChild(this.canvas);
+                this.ctx = this.canvas.getContext('2d');
+                this.size = size;
+                this.colors = {
+                    skin: '#ffd5c8',
+                    hair: '#4a4a4a',
+                    eyes: '#2c1810',
+                    mouth: '#f08080',
+                    clothes: '#6b8cff',
+                    blush: '#ffb3b3',
+                    highlight: '#ffffff'
+                };
+                
+                this.canvas.width = size;
+                this.canvas.height = size;
+                
+                this.emotionStates = {
+                    happy: {
+                        eyes: {
+                            shape: '^',
+                            highlight: true,
+                            blush: true
+                        },
+                        mouth: {
+                            shape: '‿',
+                            style: this.colors.mouth
+                        },
+                        animation: ['bounce', 'sparkle']
+                    },
+                    sad: {
+                        eyes: {
+                            shape: '•',
+                            droplet: true
+                        },
+                        mouth: {
+                            shape: '︵',
+                            style: this.colors.mouth
+                        },
+                        animation: ['droop', 'shake']
+                    },
+                    surprised: {
+                        eyes: {
+                            shape: 'O',
+                            highlight: true
+                        },
+                        mouth: {
+                            shape: 'o',
+                            style: this.colors.mouth
+                        },
+                        animation: ['pop', 'shake']
+                    },
+                    neutral: {
+                        eyes: {
+                            shape: '-'
+                        },
+                        mouth: {
+                            shape: '―',
+                            style: this.colors.mouth
+                        },
+                        animation: ['idle']
+                    }
+                };
+
+                this.updateAvatar('neutral');
+            }
+
+            async processText(text) {
+                try {
+                    const emotion = await this.analyzeEmotion(text);
+                    this.updateAvatar(emotion);
+                    document.getElementById('emotionDisplay').textContent = 
+                        `Current emotion: ${emotion}`;
+                } catch (error) {
+                    console.error('Error processing text:', error);
+                }
+            }
+
+            async analyzeEmotion(text) {
+                text = text.toLowerCase();
+                console.log('Analyzing emotion for:', text);
+
+                // 扩展情绪关键词
+                const emotions = {
+                    happy: ['happy', 'glad', 'joy', 'smile', 'great', 'good', 'wonderful', '😊', '😃', 'love', 'like', 'excellent'],
+                    sad: ['sad', 'upset', 'unhappy', 'bad', 'sorry', 'disappointed', '😢', '😭', 'miss', 'regret', 'unfortunately'],
+                    surprised: ['wow', 'omg', 'surprise', 'amazing', 'incredible', 'unbelievable', '😮', '😲', 'shocked', 'unexpected']
+                };
+
+                for (const [emotion, keywords] of Object.entries(emotions)) {
+                    if (keywords.some(keyword => text.includes(keyword))) {
+                        console.log('Detected emotion:', emotion);
+                        return emotion;
+                    }
+                }
+
+                // 如果没有找到明确的情绪，分析句子的整体语气
+                if (text.endsWith('!')) {
+                    console.log('Detected excited tone, using happy');
+                    return 'happy';
+                } else if (text.endsWith('?')) {
+                    console.log('Detected questioning tone, using surprised');
+                    return 'surprised';
+                }
+
+                console.log('No specific emotion detected, using neutral');
+                return 'neutral';
+            }
+
+            updateAvatar(emotion) {
+                const state = this.emotionStates[emotion] || this.emotionStates.neutral;
+                
+                this.ctx.clearRect(0, 0, this.size, this.size);
+                this.drawHead();
+                this.drawFeatures(state);
+                
+                if (state.animation) {
+                    this.animate(state.animation);
+                }
+            }
+
+            drawHead() {
+                // 绘制脸部基本形状
+                this.ctx.fillStyle = this.colors.skin;
+                this.ctx.beginPath();
+                this.ctx.ellipse(
+                    this.size * 0.5,
+                    this.size * 0.5,
+                    this.size * 0.3,
+                    this.size * 0.35,
+                    0,
+                    0,
+                    Math.PI * 2
+                );
+                this.ctx.fill();
+
+                // 绘制头发
+                this.ctx.fillStyle = this.colors.hair;
+                this.ctx.beginPath();
+                this.ctx.ellipse(
+                    this.size * 0.5,
+                    this.size * 0.35,
+                    this.size * 0.32,
+                    this.size * 0.25,
+                    0,
+                    Math.PI,
+                    0
+                );
+                this.ctx.fill();
+
+                // 绘制刘海
+                this.ctx.beginPath();
+                this.ctx.moveTo(this.size * 0.3, this.size * 0.35);
+                this.ctx.quadraticCurveTo(
+                    this.size * 0.5,
+                    this.size * 0.45,
+                    this.size * 0.7,
+                    this.size * 0.35
+                );
+                this.ctx.fill();
+            }
+
+            drawFeatures(state) {
+                const eyeY = this.size * 0.45;
+                const mouthY = this.size * 0.6;
+
+                // 绘制眼睛
+                this.drawEye(this.size * 0.4, eyeY, state.eyes);
+                this.drawEye(this.size * 0.6, eyeY, state.eyes);
+
+                // 绘制嘴巴
+                this.ctx.fillStyle = state.mouth.style;
+                this.ctx.font = `${this.size * 0.15}px monospace`;
+                this.ctx.fillText(state.mouth.shape, this.size * 0.5, mouthY);
+
+                // 绘制腮红
+                if (state.eyes.blush) {
+                    this.drawBlush();
+                }
+            }
+
+            drawEye(x, y, eyeState) {
+                this.ctx.fillStyle = this.colors.eyes;
+                this.ctx.fillText(eyeState.shape, x, y);
+
+                if (eyeState.highlight) {
+                    this.ctx.fillStyle = this.colors.highlight;
+                    this.ctx.fillRect(x + 2, y - 4, 2, 2);
+                }
+
+                if (eyeState.droplet) {
+                    this.ctx.fillStyle = '#89CFF0';
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(x + 5, y + 5, 2, 3, 0, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+            }
+
+            drawBlush() {
+                this.ctx.fillStyle = this.colors.blush;
+                this.ctx.globalAlpha = 0.3;
+                this.ctx.beginPath();
+                this.ctx.ellipse(this.size * 0.3, this.size * 0.55, 5, 3, 0, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.beginPath();
+                this.ctx.ellipse(this.size * 0.7, this.size * 0.55, 5, 3, 0, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.globalAlpha = 1;
+            }
+
+            animate(types) {
+                const keyframes = {
+                    bounce: [
+                        { transform: 'translateY(0)' },
+                        { transform: 'translateY(-10px)' },
+                        { transform: 'translateY(0)' }
+                    ],
+                    shake: [
+                        { transform: 'translateX(-3px) rotate(-2deg)' },
+                        { transform: 'translateX(3px) rotate(2deg)' },
+                        { transform: 'translateX(0) rotate(0deg)' }
+                    ],
+                    pop: [
+                        { transform: 'scale(1)' },
+                        { transform: 'scale(1.1)' },
+                        { transform: 'scale(1)' }
+                    ],
+                    droop: [
+                        { transform: 'rotate(0deg)' },
+                        { transform: 'rotate(-5deg)' },
+                        { transform: 'rotate(0deg)' }
+                    ],
+                    sparkle: [
+                        { filter: 'brightness(1)' },
+                        { filter: 'brightness(1.2)' },
+                        { filter: 'brightness(1)' }
+                    ],
+                    idle: [
+                        { transform: 'translateY(0)' },
+                        { transform: 'translateY(-2px)' },
+                        { transform: 'translateY(0)' }
+                    ]
+                };
+
+                types.forEach((type, index) => {
+                    setTimeout(() => {
+                        this.canvas.animate(
+                            keyframes[type],
+                            {
+                                duration: 1000,
+                                iterations: type === 'idle' ? Infinity : 1,
+                                easing: 'ease-in-out'
+                            }
+                        );
+                    }, index * 200);
+                });
+            }
+        }
+
+        // Initialize WebSocket
+        const ws = new WebSocket('ws://localhost:3002');
+        const statusElement = document.getElementById('status');
+        const avatarSystem = new PixelAvatarSystem(document.getElementById('avatar-container'));
+
+        // WebSocket event handlers
+        ws.onopen = () => {
+            console.log('WebSocket Connected');
+            statusElement.textContent = 'Connected';
+            statusElement.style.color = 'green';
+            addMessage('Connected to chat. Messages will appear here.', false);
+        };
+
+        ws.onclose = () => {
+            console.log('WebSocket Disconnected');
+            statusElement.textContent = 'Disconnected';
+            statusElement.style.color = 'red';
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket Error:', error);
+            statusElement.textContent = 'Error';
+            statusElement.style.color = 'red';
+        };
+
+        // Handle incoming WebSocket messages
+        ws.onmessage = async (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                console.log('Received WebSocket message:', data);
+                
+                // 处理所有消息
+                if (data.content) {
+                    const message = data.content.text || data.content;
+                    addMessage(message, false);
+                    // 直接处理 AI 回复的情绪
+                    await avatarSystem.processText(message);
+                    console.log('Processing AI message:', message);
+                }
+            } catch (error) {
+                console.error('Error processing message:', error);
+            }
+        };
+
+        // Add message to chat
+        function addMessage(text, isUser = false) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user-message' : 'agent-message'}`;
+            messageDiv.textContent = text;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Handle user input
+        const textInput = document.getElementById('textInput');
+        textInput.addEventListener('keypress', async (e) => {
+            if (e.key === 'Enter' && textInput.value.trim()) {
+                const message = textInput.value.trim();
+                
+                // 发送消息
+                ws.send(JSON.stringify({
+                    action: 'chat',
+                    params: {
+                        message: message
+                    }
+                }));
+
+                // 添加用户消息并更新头像
+                addMessage(message, true);
+                await avatarSystem.processText(message);
+                
+                textInput.value = '';
+            }
+        });
+    </script>
+</body>
+</html> 

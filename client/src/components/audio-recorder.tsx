@@ -13,7 +13,7 @@ import type { UUID } from "@elizaos/core";
 import { apiClient } from "@/lib/api";
 
 type Props = {
-    agentId: UUID;
+    agentId: UUID | string;
     onChange: (newInput: string) => void;
     className?: string;
     timerClassName?: string;

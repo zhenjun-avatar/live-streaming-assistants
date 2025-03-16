@@ -1,10 +1,30 @@
-import type { UUID, Character } from "@elizaos/core";
+import type { UUID, Character, Content } from "@elizaos/core";
+
+// Define the ContentWithUser type to match what's expected in chat.tsx
+interface ExtraContentFields {
+    user: string;
+    createdAt: number;
+    isLoading?: boolean;
+}
+
+type ContentWithUser = Content & ExtraContentFields;
 
 const BASE_URL =
     import.meta.env.VITE_SERVER_BASE_URL ||
     `${import.meta.env.VITE_SERVER_URL}:${import.meta.env.VITE_SERVER_PORT}`;
 
 console.log({ BASE_URL });
+
+// Define agent mapping for consistent lookup
+const AGENT_MAPPING: Record<string, string> = {
+    "12dea96f-ec20-0935-a6ab-75692c994959": "Snoop",
+    "e61b079d-5226-06e9-9763-a33094aa8d82": "Garfield"
+};
+
+// Helper function to get agent name from ID
+const getAgentName = (agentId: string): string => {
+    return AGENT_MAPPING[agentId] || agentId;
+};
 
 const fetcher = async ({
     url,
@@ -69,11 +89,14 @@ const fetcher = async ({
 };
 
 export const apiClient = {
-    sendMessage: (
-        agentId: string,
+    async sendMessage(
+        agentId: UUID | string,
         message: string,
-        selectedFile?: File | null
-    ) => {
+        selectedFile?: File | null,
+        mentionedAgents: string[] = []
+    ): Promise<ContentWithUser[]> {
+        console.log("Sending message to agent:", { agentId, message, mentionedAgents });
+        
         const formData = new FormData();
         formData.append("text", message);
         formData.append("user", "user");
@@ -81,8 +104,19 @@ export const apiClient = {
         if (selectedFile) {
             formData.append("file", selectedFile);
         }
+        if (mentionedAgents.length) {
+            formData.append("mentionedAgents", JSON.stringify(mentionedAgents));
+        }
+
+        // Send message to the first mentioned agent or default to the provided agentId
+        const targetAgentId = mentionedAgents[0] || agentId;
+        const targetName = getAgentName(targetAgentId);
+        
+        // Log the endpoint we're trying to use
+        console.log(`Sending message to endpoint: ${BASE_URL}/${targetName}/message`);
+
         return fetcher({
-            url: `/${agentId}/message`,
+            url: `/${targetName}/message`,
             method: "POST",
             body: formData,
         });
@@ -90,9 +124,11 @@ export const apiClient = {
     getAgents: () => fetcher({ url: "/agents" }),
     getAgent: (agentId: string): Promise<{ id: UUID; character: Character }> =>
         fetcher({ url: `/agents/${agentId}` }),
-    tts: (agentId: string, text: string) =>
-        fetcher({
-            url: `/${agentId}/tts`,
+    tts: (agentId: UUID | string, text: string) => {
+        const targetName = getAgentName(agentId);
+        
+        return fetcher({
+            url: `/${targetName}/tts`,
             method: "POST",
             body: {
                 text,
@@ -102,12 +138,16 @@ export const apiClient = {
                 Accept: "audio/mpeg",
                 "Transfer-Encoding": "chunked",
             },
-        }),
-    whisper: async (agentId: string, audioBlob: Blob) => {
+        });
+    },
+    whisper: async (agentId: UUID | string, audioBlob: Blob) => {
         const formData = new FormData();
         formData.append("file", audioBlob, "recording.wav");
+        
+        const targetName = getAgentName(agentId);
+        
         return fetcher({
-            url: `/${agentId}/whisper`,
+            url: `/${targetName}/whisper`,
             method: "POST",
             body: formData,
         });

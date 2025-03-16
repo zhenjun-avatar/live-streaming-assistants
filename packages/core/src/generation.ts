@@ -386,11 +386,13 @@ export async function generateText({
         return "";
     }
 
-    elizaLogger.log("Generating text...");
+    //elizaLogger.info("Generating text...");
+    //elizaLogger.info("Generating text with context:", context);
 
     elizaLogger.info("Generating text with options:", {
         modelProvider: runtime.modelProvider,
         model: modelClass,
+        context,
         // verifiableInference,
     });
     elizaLogger.log("Using provider:", runtime.modelProvider);

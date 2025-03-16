@@ -5,12 +5,13 @@ import { useRef, useState } from "react";
 import { apiClient } from "@/lib/api";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../tooltip";
 import { useToast } from "@/hooks/use-toast";
+import type { UUID } from "@elizaos/core";
 
 export default function ChatTtsButton({
     agentId,
     text,
 }: {
-    agentId: string;
+    agentId: UUID | string;
     text: string;
 }) {
     const { toast } = useToast();

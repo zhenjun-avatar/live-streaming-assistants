@@ -1,4 +1,5 @@
 import { DirectClient } from "@elizaos/client-direct";
+import { DiscordClient } from "@elizaos/client-discord";
 import {
     type Adapter,
     AgentRuntime,
@@ -30,6 +31,14 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import yargs from "yargs";
+import { SqliteDatabaseAdapter } from "@elizaos-plugins/adapter-sqlite";
+//import { aptosPlugin } from "@elizaos/plugin-aptos";
+
+import { userDataProvider, userDataCompletionProvider } from "./userDataProvider";
+import userDataEvaluator from "./userDataEvaluator";
+import { streamGoalsCompletionProvider, streamGoalsProvider } from "./streamGoalsProvider";
+import { streamGoalsEvaluator } from "./streamGoalsEvaluator";
+//import { sunoPlugin } from "@elizaos/plugin-suno";
 
 const __filename = fileURLToPath(import.meta.url); // get the resolved path to the file
 const __dirname = path.dirname(__filename); // get the name of the directory
@@ -586,6 +595,9 @@ export function getTokenForProvider(
     }
 }
 
+
+
+
 // also adds plugins from character file into the runtime
 export async function initializeClients(
     character: Character,
@@ -618,23 +630,36 @@ export async function createAgent(
     character: Character,
     token: string
 ): Promise<AgentRuntime> {
-    elizaLogger.log(`Creating runtime for character ${character.name}`);
-    return new AgentRuntime({
+    elizaLogger.info(`Creating runtime for character ${character.name}`, {
+        evaluators: ["streamGoalsEvaluator"],
+        providers: ["streamGoalsProvider","streamGoalsCompletionProvider"]
+    });
+    
+    const runtime = new AgentRuntime({
         token,
         modelProvider: character.modelProvider,
-        evaluators: [],
+        evaluators: [streamGoalsEvaluator],
         character,
-        // character.plugins are handled when clients are added
         plugins: [
             bootstrapPlugin,
         ]
             .flat()
             .filter(Boolean),
-        providers: [],
+        providers: [streamGoalsProvider,streamGoalsCompletionProvider],
         managers: [],
         fetch: logFetch,
-        // verifiableInferenceAdapter,
     });
+
+    elizaLogger.info("Runtime created with evaluators", { 
+        evaluatorCount: runtime.evaluators?.length,
+        evaluatorNames: runtime.evaluators?.map(e => e.name),
+        evaluatorAlwaysRun: runtime.evaluators?.map(e => ({
+            name: e.name,
+            alwaysRun: e.alwaysRun
+        }))
+    });
+
+    return runtime;
 }
 
 function initializeFsCache(baseDir: string, character: Character) {
@@ -743,6 +768,7 @@ async function startAgent(
             character,
             token
         );
+        //elizaLogger.info("Runtime created", { runtime });
 
         // initialize database
         // find a db from the plugins
