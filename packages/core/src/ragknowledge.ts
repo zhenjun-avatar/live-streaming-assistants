@@ -411,9 +411,13 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
         );
 
         try {
-            // Only pass the required agentId parameter
+            // Get userId from runtime if available
+            const userId = this.runtime.currentUserId;
+            
+            // Include the userId parameter
             const results = await this.runtime.databaseAdapter.getKnowledge({
                 agentId: agentId,
+                userId: userId,
             });
 
             elizaLogger.debug(
@@ -439,6 +443,9 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
             elizaLogger.debug(
                 `[Cleanup] Knowledge root path: ${this.knowledgeRoot}`
             );
+
+            // Get userId from runtime if available
+            const userId = this.runtime.currentUserId;
 
             const existingKnowledge = await this.listAllKnowledge(
                 this.runtime.agentId
@@ -473,7 +480,8 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
 
                     try {
                         // Just remove the parent document - this will cascade to chunks
-                        await this.removeKnowledge(idToRemove);
+                        // Pass the userId for multi-user support
+                        await this.removeKnowledge(idToRemove, userId);
 
                         // // Clean up the cache
                         // const baseCacheKeyWithWildcard = `${this.generateKnowledgeCacheKeyBase(

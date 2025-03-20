@@ -1379,6 +1379,9 @@ export interface IAgentRuntime {
     ): Promise<State>;
 
     updateRecentMessageState(state: State): Promise<State>;
+    
+    // 设置当前用户ID
+    setCurrentUserId(userId: UUID): void;
 }
 
 export interface IImageDescriptionService extends Service {

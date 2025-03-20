@@ -31,14 +31,12 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import yargs from "yargs";
-import { SqliteDatabaseAdapter } from "@elizaos-plugins/adapter-sqlite";
-//import { aptosPlugin } from "@elizaos/plugin-aptos";
+import { SqliteDatabaseAdapter, MultiUserSqliteDatabaseAdapter } from "@elizaos-plugins/adapter-sqlite";
 
 import { userDataProvider, userDataCompletionProvider } from "./userDataProvider";
 import userDataEvaluator from "./userDataEvaluator";
 import { streamGoalsCompletionProvider, streamGoalsProvider } from "./streamGoalsProvider";
 import { streamGoalsEvaluator } from "./streamGoalsEvaluator";
-//import { sunoPlugin } from "@elizaos/plugin-suno";
 
 const __filename = fileURLToPath(import.meta.url); // get the resolved path to the file
 const __dirname = path.dirname(__filename); // get the name of the directory
@@ -385,7 +383,7 @@ async function handlePluginImporting(plugins: string[]) {
         const importedPlugins = await Promise.all(
             plugins.map(async (plugin) => {
                 try {
-                    const importedPlugin:Plugin = await import(plugin);
+                    const importedPlugin = await import(plugin);
                     const functionName =
                         plugin
                             .replace("@elizaos/plugin-", "")
@@ -395,9 +393,8 @@ async function handlePluginImporting(plugins: string[]) {
                     if (!importedPlugin[functionName] && !importedPlugin.default) {
                       elizaLogger.warn(plugin, 'does not have an default export or', functionName)
                     }
-                    return {...(
-                        importedPlugin.default || importedPlugin[functionName]
-                    ), npmName: plugin };
+                    const pluginModule = importedPlugin.default || importedPlugin[functionName];
+                    return {...pluginModule, npmName: plugin };
                 } catch (importError) {
                     console.error(
                         `Failed to import plugin: ${plugin}`,
@@ -774,6 +771,15 @@ async function startAgent(
         // find a db from the plugins
         db = await findDatabaseAdapter(runtime);
         runtime.databaseAdapter = db;
+
+        // 如果是多用户模式，设置默认用户ID
+        if (process.env.SQLITE_MULTI_USER === "true") {
+            const multiUserAdapter = db as any;
+            if (typeof multiUserAdapter.setUserId === 'function') {
+                multiUserAdapter.setUserId(runtime);
+                elizaLogger.debug(`Multi-user mode enabled, current user ID: ${runtime.currentUserId}`);
+            }
+        }
 
         // initialize cache
         const cache = initializeCache(

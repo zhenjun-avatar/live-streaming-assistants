@@ -1,1 +1,1 @@
-SELECT * FROM cache;
+SELECT * FROM memories;

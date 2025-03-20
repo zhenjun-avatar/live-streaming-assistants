@@ -197,7 +197,7 @@ export async function embed(runtime: IAgentRuntime, input: string) {
             type: typeof input,
             length: input?.length,
         });
-        return []; // Return empty embedding array
+        return getEmbeddingZeroVector();
     }
 
     // Check cache first
