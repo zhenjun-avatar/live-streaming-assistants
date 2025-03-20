@@ -1142,6 +1142,7 @@ export interface IDatabaseAdapter {
         limit?: number;
         query?: string;
         conversationContext?: string;
+        userId?: UUID;
     }): Promise<RAGKnowledgeItem[]>;
 
     searchKnowledge(params: {
@@ -1150,11 +1151,12 @@ export interface IDatabaseAdapter {
         match_threshold: number;
         match_count: number;
         searchText?: string;
+        userId?: UUID;
     }): Promise<RAGKnowledgeItem[]>;
 
-    createKnowledge(knowledge: RAGKnowledgeItem): Promise<void>;
-    removeKnowledge(id: UUID): Promise<void>;
-    clearKnowledge(agentId: UUID, shared?: boolean): Promise<void>;
+    createKnowledge(knowledge: RAGKnowledgeItem & { userId?: UUID }): Promise<void>;
+    removeKnowledge(id: UUID, userId?: UUID): Promise<void>;
+    clearKnowledge(agentId: UUID, shared?: boolean, userId?: UUID): Promise<void>;
 }
 
 export interface IDatabaseCacheAdapter {
@@ -1225,22 +1227,25 @@ export interface IRAGKnowledgeManager {
         limit?: number;
         conversationContext?: string;
         agentId?: UUID;
+        userId?: UUID;
     }): Promise<RAGKnowledgeItem[]>;
     createKnowledge(item: RAGKnowledgeItem): Promise<void>;
-    removeKnowledge(id: UUID): Promise<void>;
+    removeKnowledge(id: UUID, userId?: UUID): Promise<void>;
     searchKnowledge(params: {
         agentId: UUID;
         embedding: Float32Array | number[];
         match_threshold?: number;
         match_count?: number;
         searchText?: string;
+        userId?: UUID;
     }): Promise<RAGKnowledgeItem[]>;
-    clearKnowledge(shared?: boolean): Promise<void>;
+    clearKnowledge(shared?: boolean, userId?: UUID): Promise<void>;
     processFile(file: {
         path: string;
         content: string;
         type: "pdf" | "md" | "txt";
         isShared: boolean;
+        userId?: UUID;
     }): Promise<void>;
     cleanupDeletedKnowledgeFiles(): Promise<void>;
     generateScopedId(path: string, isShared: boolean): UUID;
@@ -1298,6 +1303,7 @@ export interface IAgentRuntime {
     actions: Action[];
     evaluators: Evaluator[];
     plugins: Plugin[];
+    currentUserId?: UUID;
 
     fetch?: typeof fetch | null;
 

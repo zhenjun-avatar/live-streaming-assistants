@@ -183,8 +183,10 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
         conversationContext?: string;
         limit?: number;
         agentId?: UUID;
+        userId?: UUID;
     }): Promise<RAGKnowledgeItem[]> {
         const agentId = params.agentId || this.runtime.agentId;
+        const userId = params.userId || this.runtime.currentUserId;
 
         // If id is provided, do direct lookup first
         if (params.id) {
@@ -192,6 +194,7 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
                 await this.runtime.databaseAdapter.getKnowledge({
                     id: params.id,
                     agentId: agentId,
+                    userId: userId,
                 });
 
             if (directResults.length > 0) {
@@ -226,6 +229,7 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
                         match_count:
                             (params.limit || this.defaultRAGMatchCount) * 2,
                         searchText: processedQuery,
+                        userId: userId,
                     });
 
                 // Enhanced reranking with sophisticated scoring
@@ -302,6 +306,9 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
 
             const mainEmbedding = new Float32Array(mainEmbeddingArray);
 
+            // Get current user ID from runtime if available
+            const userId = this.runtime.currentUserId;
+
             // Create main document
             await this.runtime.databaseAdapter.createKnowledge({
                 id: item.id,
@@ -315,6 +322,7 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
                 },
                 embedding: mainEmbedding,
                 createdAt: Date.now(),
+                userId, // Add userId for multi-user support
             });
 
             // Generate and store chunks
@@ -339,6 +347,7 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
                     },
                     embedding: chunkEmbedding,
                     createdAt: Date.now(),
+                    userId, // Add userId for multi-user support
                 });
             }
         } catch (error) {
@@ -353,12 +362,14 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
         match_threshold?: number;
         match_count?: number;
         searchText?: string;
+        userId?: UUID;
     }): Promise<RAGKnowledgeItem[]> {
         const {
             match_threshold = this.defaultRAGMatchThreshold,
             match_count = this.defaultRAGMatchCount,
             embedding,
             searchText,
+            userId,
         } = params;
 
         const float32Embedding = Array.isArray(embedding)
@@ -371,17 +382,19 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
             match_threshold,
             match_count,
             searchText,
+            userId: userId || this.runtime.currentUserId,
         });
     }
 
-    async removeKnowledge(id: UUID): Promise<void> {
-        await this.runtime.databaseAdapter.removeKnowledge(id);
+    async removeKnowledge(id: UUID, userId?: UUID): Promise<void> {
+        await this.runtime.databaseAdapter.removeKnowledge(id, userId || this.runtime.currentUserId);
     }
 
-    async clearKnowledge(shared?: boolean): Promise<void> {
+    async clearKnowledge(shared?: boolean, userId?: UUID): Promise<void> {
         await this.runtime.databaseAdapter.clearKnowledge(
             this.runtime.agentId,
-            shared ? shared : false
+            shared ? shared : false,
+            userId || this.runtime.currentUserId
         );
     }
 
@@ -510,118 +523,90 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
         content: string;
         type: "pdf" | "md" | "txt";
         isShared?: boolean;
+        userId?: UUID;
     }): Promise<void> {
         const timeMarker = (label: string) => {
-            const time = (Date.now() - startTime) / 1000;
-            elizaLogger.info(`[Timing] ${label}: ${time.toFixed(2)}s`);
+            const now = new Date();
+            elizaLogger.debug(
+                `[TIMING] ${label}: ${now.toISOString()} (${now.getTime()})`
+            );
         };
 
-        const startTime = Date.now();
-        const content = file.content;
+        timeMarker("Start processing file");
 
         try {
-            const fileSizeKB = new TextEncoder().encode(content).length / 1024;
-            elizaLogger.info(
-                `[File Progress] Starting ${file.path} (${fileSizeKB.toFixed(2)} KB)`
-            );
+            let processedContent: string = file.content;
 
-            // Generate scoped ID for the file
-            const scopedId = this.generateScopedId(
-                file.path,
-                file.isShared || false
-            );
-
-            // Step 1: Preprocessing
-            //const preprocessStart = Date.now();
-            const processedContent = this.preprocess(content);
-            timeMarker("Preprocessing");
-
-            // Step 2: Main document embedding
-            const mainEmbeddingArray = await embed(
+            // Get embedding for the file
+            timeMarker("Start generating embedding");
+            const embeddingArray = await embed(
                 this.runtime,
-                processedContent
+                processedContent.slice(0, 8192)
             );
-            const mainEmbedding = new Float32Array(mainEmbeddingArray);
-            timeMarker("Main embedding");
+            timeMarker("Finished generating embedding");
 
-            // Step 3: Create main document
+            const embedding = new Float32Array(embeddingArray);
+
+            // Generate a stable ID based on the file path
+            const cleanedPath = file.path.replace(/\\/g, "/");
+            const fileId = this.generateScopedId(
+                cleanedPath,
+                !!file.isShared
+            );
+
+            // Get the userId to use
+            const userId = file.userId || this.runtime.currentUserId;
+
+            // Create the RAG knowledge item
             await this.runtime.databaseAdapter.createKnowledge({
-                id: scopedId,
+                id: fileId,
                 agentId: this.runtime.agentId,
                 content: {
-                    text: content,
+                    text: processedContent,
                     metadata: {
-                        source: file.path,
+                        source: cleanedPath,
                         type: file.type,
-                        isShared: file.isShared || false,
+                        isShared: file.isShared,
+                        isMain: true,
                     },
                 },
-                embedding: mainEmbedding,
+                embedding,
                 createdAt: Date.now(),
+                userId, // Add the userId parameter
             });
-            timeMarker("Main document storage");
+            
+            timeMarker("Created main knowledge item");
 
-            // Step 4: Generate chunks
+            // Generate and store chunks
             const chunks = await splitChunks(processedContent, 512, 20);
-            const totalChunks = chunks.length;
-            elizaLogger.info(`Generated ${totalChunks} chunks`);
-            timeMarker("Chunk generation");
+            timeMarker(`Split ${chunks.length} chunks`);
 
-            // Step 5: Process chunks with larger batches
-            const BATCH_SIZE = 10; // Increased batch size
-            let processedChunks = 0;
+            for (const [index, chunk] of chunks.entries()) {
+                const chunkEmbeddingArray = await embed(this.runtime, chunk);
+                const chunkEmbedding = new Float32Array(chunkEmbeddingArray);
+                const chunkId = `${fileId}-chunk-${index}` as UUID;
 
-            for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
-                const batchStart = Date.now();
-                const batch = chunks.slice(
-                    i,
-                    Math.min(i + BATCH_SIZE, chunks.length)
-                );
-
-                // Process embeddings in parallel
-                const embeddings = await Promise.all(
-                    batch.map((chunk) => embed(this.runtime, chunk))
-                );
-
-                // Batch database operations
-                await Promise.all(
-                    embeddings.map(async (embeddingArray, index) => {
-                        const chunkId =
-                            `${scopedId}-chunk-${i + index}` as UUID;
-                        const chunkEmbedding = new Float32Array(embeddingArray);
-
-                        await this.runtime.databaseAdapter.createKnowledge({
-                            id: chunkId,
-                            agentId: this.runtime.agentId,
-                            content: {
-                                text: batch[index],
-                                metadata: {
-                                    source: file.path,
-                                    type: file.type,
-                                    isShared: file.isShared || false,
-                                    isChunk: true,
-                                    originalId: scopedId,
-                                    chunkIndex: i + index,
-                                    originalPath: file.path,
-                                },
-                            },
-                            embedding: chunkEmbedding,
-                            createdAt: Date.now(),
-                        });
-                    })
-                );
-
-                processedChunks += batch.length;
-                const batchTime = (Date.now() - batchStart) / 1000;
-                elizaLogger.info(
-                    `[Batch Progress] ${file.path}: Processed ${processedChunks}/${totalChunks} chunks (${batchTime.toFixed(2)}s for batch)`
-                );
+                await this.runtime.databaseAdapter.createKnowledge({
+                    id: chunkId,
+                    agentId: this.runtime.agentId,
+                    content: {
+                        text: chunk,
+                        metadata: {
+                            source: cleanedPath,
+                            type: file.type,
+                            isShared: file.isShared,
+                            isChunk: true,
+                            originalId: fileId,
+                            chunkIndex: index,
+                        },
+                    },
+                    embedding: chunkEmbedding,
+                    createdAt: Date.now(),
+                    userId, // Add the userId parameter
+                });
             }
 
-            const totalTime = (Date.now() - startTime) / 1000;
-            elizaLogger.info(
-                `[Complete] Processed ${file.path} in ${totalTime.toFixed(2)}s`
-            );
+            timeMarker("Finished processing file");
         } catch (error) {
             if (
                 file.isShared &&

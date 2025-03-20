@@ -180,6 +180,9 @@ export class AgentRuntime implements IAgentRuntime {
 
     // verifiableInferenceAdapter?: IVerifiableInferenceAdapter;
 
+    // New property for multi-user support
+    currentUserId?: UUID;
+
     registerMemoryManager(manager: IMemoryManager): void {
         if (!manager.tableName) {
             throw new Error("Memory manager must have a tableName");
@@ -1788,6 +1791,12 @@ Text: ${attachment.text}
             recentMessagesData,
             attachments: formattedAttachments,
         } as State;
+    }
+
+    // Add a method to set current user ID
+    setCurrentUserId(userId: UUID): void {
+        this.currentUserId = userId;
+        elizaLogger.debug(`Set current user ID to ${userId}`);
     }
 }
 
