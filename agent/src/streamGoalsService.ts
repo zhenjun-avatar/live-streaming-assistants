@@ -1,5 +1,5 @@
-import { IAgentRuntime, elizaLogger } from "@elizaos/core";
-import { StreamGoals, StreamGoalItem, GoalType, GoalUpdate } from "./types";
+import { type IAgentRuntime, elizaLogger } from "@elizaos/core";
+import type { StreamGoals, StreamGoalItem, GoalType, GoalUpdate } from "./types";
 
 /**
  * Service class for managing stream goals operations

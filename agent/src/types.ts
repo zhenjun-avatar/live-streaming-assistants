@@ -1,4 +1,4 @@
-import { UUID } from "@elizaos/core";
+import type { UUID } from "@elizaos/core";
 
 /**
  * Represents user data collected during conversations

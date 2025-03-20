@@ -1,4 +1,4 @@
-import { UserData } from "./types";
+import type { UserData } from "./types";
 
 /**
  * Conversation prompts for different scenarios

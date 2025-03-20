@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Content } from '@elizaos/core';
-import Speech, { Voice } from 'speak-tts';
+import type { Content } from '@elizaos/core';
+import Speech, { type Voice } from 'speak-tts';
 
 interface PixelAvatarSystem {
     processText: (text: string) => Promise<string>;
@@ -32,11 +32,11 @@ class PixelAvatarSystemImpl implements PixelAvatarSystem {
     private colors: Record<string, string>;
     private emotionStates: Record<string, any>;
     private agentName: string;
-    private currentEmotion: string = 'neutral';
-    private mouthAnimationFrame: number = 0;
+    private currentEmotion = 'neutral';
+    private mouthAnimationFrame = 0;
     private mouthAnimationInterval: NodeJS.Timeout | null = null;
     private emotionResetTimer: NodeJS.Timeout | null = null;
-    private animationsInProgress: boolean = false;
+    private animationsInProgress = false;
 
     constructor(container: HTMLElement, size = 64, _role: string, agentName: string) {
         this.canvas = document.createElement('canvas');
@@ -223,7 +223,7 @@ class PixelAvatarSystemImpl implements PixelAvatarSystem {
             if (keyframes) {
                 this.canvas.animate(keyframes, {
                     duration: 1000,
-                    iterations: type === 'idle' ? Infinity : 3,
+                    iterations: type === 'idle' ? Number.POSITIVE_INFINITY : 3,
                     easing: 'ease-in-out'
                 });
             }
@@ -466,7 +466,7 @@ class PixelAvatarSystemImpl implements PixelAvatarSystem {
 
 class TTSSystem {
     private tts: Speech;
-    private isInitialized: boolean = false;
+    private isInitialized = false;
     private characterConfig: {
         pitch: number;
         rate: number;

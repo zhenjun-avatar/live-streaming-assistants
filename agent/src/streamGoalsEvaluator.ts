@@ -1,6 +1,6 @@
-import { Evaluator, IAgentRuntime, Memory, elizaLogger, ModelClass, composeContext, generateObjectArray } from "@elizaos/core";
+import { type Evaluator, type IAgentRuntime, type Memory, elizaLogger, ModelClass, composeContext, generateObjectArray } from "@elizaos/core";
 import { StreamGoalsService } from "./streamGoalsService";
-import { StreamGoals, GoalUpdate, GoalType } from "./types";
+import { type StreamGoals, type GoalUpdate, GoalType } from "./types";
 
 /**
  * Check if all goals are complete

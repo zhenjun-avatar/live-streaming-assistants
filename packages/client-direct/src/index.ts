@@ -28,6 +28,7 @@ import * as path from "path";
 import { z } from "zod";
 import { createApiRouter } from "./api.ts";
 import { createVerifiableLogApiRouter } from "./verifiable-log-api.ts";
+import { createAgentManagementRouter } from "./agent-management-api.ts";
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -141,6 +142,10 @@ export class DirectClient {
 
         const apiLogRouter = createVerifiableLogApiRouter(this.agents);
         this.app.use(apiLogRouter);
+        
+        // Register the agent management API
+        const agentManagementRouter = createAgentManagementRouter(this.agents, this);
+        this.app.use(agentManagementRouter);
 
         // Define an interface that extends the Express Request interface
         interface CustomRequest extends ExpressRequest {

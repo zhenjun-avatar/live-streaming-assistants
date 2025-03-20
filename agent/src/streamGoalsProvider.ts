@@ -1,7 +1,7 @@
-import { IAgentRuntime, Provider, Memory, elizaLogger } from "@elizaos/core";
+import { type IAgentRuntime, type Provider, type Memory, elizaLogger } from "@elizaos/core";
 import { StreamGoalsService } from "./streamGoalsService";
 import { isGoalsComplete } from "./streamGoalsEvaluator";
-import { StreamGoals } from "./types";
+import type { StreamGoals } from "./types";
 
 const emptyStreamGoals: StreamGoals = {
     goals: [],

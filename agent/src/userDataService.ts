@@ -1,5 +1,5 @@
-import { IAgentRuntime, Memory, elizaLogger, UUID } from "@elizaos/core";
-import { UserData, formatCacheKey } from "./types";
+import { type IAgentRuntime, type Memory, elizaLogger, type UUID } from "@elizaos/core";
+import { type UserData, formatCacheKey } from "./types";
 
 type UserDataField = 'name' | 'location' | 'occupation';
 
@@ -107,7 +107,7 @@ export class UserDataService {
     async processMessage(message: Memory): Promise<boolean> {
         try {
             // Get or initialize user data
-            let userData = await this.getUserData(message.userId) || {
+            const userData = await this.getUserData(message.userId) || {
                 updatedAt: Date.now()
             };
 

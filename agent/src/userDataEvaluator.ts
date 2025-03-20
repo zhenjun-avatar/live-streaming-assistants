@@ -1,6 +1,6 @@
-import { Evaluator, IAgentRuntime, Memory, elizaLogger, ModelClass, composeContext, generateObjectArray } from "@elizaos/core";
+import { type Evaluator, type IAgentRuntime, type Memory, elizaLogger, ModelClass, composeContext, generateObjectArray } from "@elizaos/core";
 import { UserDataService } from "./userDataService";
-import { UserData } from "./types";
+import type { UserData } from "./types";
 
 
 

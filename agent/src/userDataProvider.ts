@@ -1,7 +1,7 @@
-import { IAgentRuntime, Provider, Memory, elizaLogger } from "@elizaos/core";
+import { type IAgentRuntime, type Provider, type Memory, elizaLogger } from "@elizaos/core";
 import { UserDataService } from "./userDataService";
 import { CONVERSATION_PROMPTS } from "./patterns";
-import { UserData } from "./types";
+import type { UserData } from "./types";
 import { isDataComplete } from "./userDataEvaluator";
 
 const emptyUserData: UserData = {
