@@ -1,4 +1,5 @@
 import { DirectClient } from "@elizaos/client-direct";
+import { DiscordClient } from "@elizaos/client-discord";
 import {
     type Adapter,
     AgentRuntime,
@@ -30,6 +31,12 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import yargs from "yargs";
+import SqliteDatabaseAdapter from "@elizaos-plugins/adapter-sqlite";
+
+import { userDataProvider, userDataCompletionProvider } from "./userDataProvider";
+import userDataEvaluator from "./userDataEvaluator";
+import { streamGoalsCompletionProvider, streamGoalsProvider } from "./streamGoalsProvider";
+import { streamGoalsEvaluator } from "./streamGoalsEvaluator";
 
 const __filename = fileURLToPath(import.meta.url); // get the resolved path to the file
 const __dirname = path.dirname(__filename); // get the name of the directory
@@ -376,7 +383,7 @@ async function handlePluginImporting(plugins: string[]) {
         const importedPlugins = await Promise.all(
             plugins.map(async (plugin) => {
                 try {
-                    const importedPlugin:Plugin = await import(plugin);
+                    const importedPlugin = await import(plugin);
                     const functionName =
                         plugin
                             .replace("@elizaos/plugin-", "")
@@ -386,9 +393,8 @@ async function handlePluginImporting(plugins: string[]) {
                     if (!importedPlugin[functionName] && !importedPlugin.default) {
                       elizaLogger.warn(plugin, 'does not have an default export or', functionName)
                     }
-                    return {...(
-                        importedPlugin.default || importedPlugin[functionName]
-                    ), npmName: plugin };
+                    const pluginModule = importedPlugin.default || importedPlugin[functionName];
+                    return {...pluginModule, npmName: plugin };
                 } catch (importError) {
                     console.error(
                         `Failed to import plugin: ${plugin}`,
@@ -586,6 +592,9 @@ export function getTokenForProvider(
     }
 }
 
+
+
+
 // also adds plugins from character file into the runtime
 export async function initializeClients(
     character: Character,
@@ -618,23 +627,32 @@ export async function createAgent(
     character: Character,
     token: string
 ): Promise<AgentRuntime> {
-    elizaLogger.log(`Creating runtime for character ${character.name}`);
-    return new AgentRuntime({
+    elizaLogger.info(`Creating runtime for character ${character.name}`, {
+        evaluators: ["streamGoalsEvaluator"],
+        providers: ["streamGoalsProvider","streamGoalsCompletionProvider"]
+    });
+    
+    const runtime = new AgentRuntime({
         token,
         modelProvider: character.modelProvider,
         evaluators: [],
         character,
-        // character.plugins are handled when clients are added
-        plugins: [
-            bootstrapPlugin,
-        ]
-            .flat()
-            .filter(Boolean),
+        plugins: [],
         providers: [],
         managers: [],
         fetch: logFetch,
-        // verifiableInferenceAdapter,
     });
+
+    elizaLogger.info("Runtime created with evaluators", { 
+        evaluatorCount: runtime.evaluators?.length,
+        evaluatorNames: runtime.evaluators?.map(e => e.name),
+        evaluatorAlwaysRun: runtime.evaluators?.map(e => ({
+            name: e.name,
+            alwaysRun: e.alwaysRun
+        }))
+    });
+
+    return runtime;
 }
 
 function initializeFsCache(baseDir: string, character: Character) {
@@ -743,11 +761,13 @@ async function startAgent(
             character,
             token
         );
+        //elizaLogger.info("Runtime created", { runtime });
 
         // initialize database
         // find a db from the plugins
         db = await findDatabaseAdapter(runtime);
         runtime.databaseAdapter = db;
+
 
         // initialize cache
         const cache = initializeCache(

@@ -1,0 +1,350 @@
+#!/bin/bash
+
+# 配置 - 使用相对路径
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+BASE_DIR="$SCRIPT_DIR"              # 应用根目录
+DATA_DIR="${BASE_DIR}/user_data"    # 用户数据目录
+CONFIG_DIR="${BASE_DIR}/config"     # 用户配置目录
+LOG_DIR="${BASE_DIR}/logs"          # 日志目录
+REQUIRED_NODE_VERSION="23.3.0"      # 需要的 Node.js 版本
+REQUIRED_PNPM_VERSION="9.15.7"      # 需要的 pnpm 版本
+PORT_START=3000                     # 起始端口
+PORT_END=3999                       # 结束端口
+INACTIVE_TIMEOUT=3600              # 不活跃超时时间（秒）
+
+# 设置目录权限
+setup_directories() {
+    echo "设置目录权限..."
+    mkdir -p "$DATA_DIR" "$CONFIG_DIR" "$LOG_DIR"
+    chmod 755 "$DATA_DIR" "$CONFIG_DIR" "$LOG_DIR"
+    echo "目录权限设置完成"
+}
+
+# 设置用户实例目录权限
+setup_user_directories() {
+    local user_id=$1
+    if [ -z "$user_id" ]; then
+        echo "Error: 需要用户ID"
+        return 1
+    fi
+
+    echo "设置用户 ${user_id} 的目录权限..."
+    mkdir -p "${DATA_DIR}/user_${user_id}"
+    chmod 755 "${DATA_DIR}/user_${user_id}"
+    echo "用户目录权限设置完成"
+}
+
+# 检查 Node.js 版本
+check_node() {
+    if ! command -v node &> /dev/null; then
+        echo "Error: Node.js 未安装"
+        return 1
+    fi
+
+    local current_version=$(node --version | sed 's/^v//')
+    if [ "$current_version" != "$REQUIRED_NODE_VERSION" ]; then
+        echo "Error: 需要 Node.js ${REQUIRED_NODE_VERSION}，当前版本是 ${current_version}"
+        return 1
+    fi
+
+    echo "Node.js 版本检查通过"
+    return 0
+}
+
+# 检查 pnpm 版本
+check_pnpm() {
+    if ! command -v pnpm &> /dev/null; then
+        echo "Error: pnpm 未安装"
+        return 1
+    fi
+
+    local current_version=$(pnpm --version)
+    if [ "$current_version" != "$REQUIRED_PNPM_VERSION" ]; then
+        echo "Error: 需要 pnpm ${REQUIRED_PNPM_VERSION}，当前版本是 ${current_version}"
+        return 1
+    fi
+
+    echo "pnpm 版本检查通过"
+    return 0
+}
+
+# 获取可用端口
+get_available_port() {
+    local user_id=$1
+    # 使用用户ID计算端口号
+    local port=$((3000 + ($user_id % 1000)))
+    echo $port
+    return 0
+}
+
+# 创建用户实例
+create_user() {
+    local user_id=$1
+    if [ -z "$user_id" ]; then
+        echo "Error: 需要用户ID"
+        return 1
+    fi
+
+    # 获取可用端口
+    local port=$(get_available_port "$user_id")
+    
+    # 设置目录权限
+    setup_user_directories "$user_id"
+    
+    # 创建用户配置文件
+    mkdir -p "$CONFIG_DIR"
+    cat > "${CONFIG_DIR}/user_${user_id}.env" <<EOL
+USER_ID=${user_id}
+SERVER_PORT=${port}
+SQLITE_FILE=${DATA_DIR}/user_${user_id}/db.sqlite
+BASE_PATH=/user/${user_id}
+EOL
+
+    echo "创建用户 ${user_id} 的配置文件：${CONFIG_DIR}/user_${user_id}.env"
+    echo "分配端口: $port"
+    echo "访问路径: /user/${user_id}/"
+    echo "内部端口: $port"
+    
+    # 启动用户实例
+    start_user "$user_id"
+}
+
+# 添加进程检查函数
+check_process() {
+    local user_id=$1
+    ps aux | grep "node.*USER_ID=${user_id}" > /dev/null
+    return $?
+}
+
+# 修改 start_user 函数中的进程检查部分
+start_user() {
+    local user_id=$1
+    if [ -z "$user_id" ]; then
+        echo "Error: 需要用户ID"
+        return 1
+    fi
+
+    # 检查依赖
+    check_node || return 1
+    check_pnpm || return 1
+
+    # 检查是否已运行
+    if check_process "$user_id"; then
+        echo "用户 ${user_id} 的实例已在运行"
+        
+        # 输出实例信息
+        if [ -f "${CONFIG_DIR}/user_${user_id}.env" ]; then
+            source "${CONFIG_DIR}/user_${user_id}.env"
+            echo "访问路径: /user/${user_id}/"
+            echo "内部端口: $SERVER_PORT"
+            echo "数据库文件: $SQLITE_FILE"
+            echo "日志文件: ${LOG_DIR}/user_${user_id}.log"
+            if [ -f "${DATA_DIR}/user_${user_id}/pid" ]; then
+                echo "进程ID: $(cat "${DATA_DIR}/user_${user_id}/pid")"
+            fi
+        fi
+        return 0
+    fi
+
+    # 确保日志文件存在
+    mkdir -p "$LOG_DIR"
+    touch "${LOG_DIR}/user_${user_id}.log"
+
+    # 加载环境变量
+    if [ ! -f "${CONFIG_DIR}/user_${user_id}.env" ]; then
+        echo "Error: 用户配置文件不存在"
+        return 1
+    fi
+    source "${CONFIG_DIR}/user_${user_id}.env"
+
+    # 启动应用
+    echo "正在启动用户 ${user_id} 的应用..."
+    
+    # 使用 start 命令启动应用
+    (cd "$BASE_DIR" && \
+    SERVER_PORT=$SERVER_PORT \
+    USER_ID=$USER_ID \
+    SQLITE_FILE=$SQLITE_FILE \
+    BASE_PATH=/user/${user_id} \
+    pnpm start > "${LOG_DIR}/user_${user_id}.log" 2>&1) &
+
+    # 保存进程ID
+    local pid=$!
+    echo $pid > "${DATA_DIR}/user_${user_id}/pid"
+
+    # 等待进程启动
+    local max_attempts=10
+    local attempt=1
+    local is_running=false
+
+    while [ $attempt -le $max_attempts ]; do
+        sleep 2
+        if check_process "$user_id"; then
+            is_running=true
+            break
+        fi
+        echo "等待应用启动... (尝试 $attempt/$max_attempts)"
+        attempt=$((attempt + 1))
+    done
+
+    if $is_running; then
+        echo "用户 ${user_id} 的应用已成功启动"
+        echo "访问路径: /user/${user_id}/"
+        echo "内部端口: $SERVER_PORT"
+        echo "数据库文件: $SQLITE_FILE"
+        echo "日志文件: ${LOG_DIR}/user_${user_id}.log"
+        echo "进程ID: $pid"
+        
+        # 显示启动日志
+        echo -e "\n最近的启动日志："
+        tail -n 5 "${LOG_DIR}/user_${user_id}.log"
+        return 0
+    else
+        echo "Error: 应用启动失败，请检查日志文件"
+        echo -e "\n最后 10 行日志："
+        tail -n 10 "${LOG_DIR}/user_${user_id}.log"
+        return 1
+    fi
+}
+
+# 修改 stop_user 函数
+stop_user() {
+    local user_id=$1
+    if [ -z "$user_id" ]; then
+        echo "Error: 需要用户ID"
+        return 1
+    fi
+
+    # 停止进程
+    if [ -f "${DATA_DIR}/user_${user_id}/pid" ]; then
+        local pid=$(cat "${DATA_DIR}/user_${user_id}/pid")
+        if ps -p "$pid" > /dev/null 2>&1; then
+            echo "正在停止用户 ${user_id} 的进程 (PID: $pid)..."
+            kill $pid 2>/dev/null || true
+            sleep 2
+            if ps -p "$pid" > /dev/null 2>&1; then
+                echo "进程未响应，强制终止..."
+                kill -9 $pid 2>/dev/null || true
+            fi
+        else
+            echo "进程 $pid 已不存在"
+        fi
+        rm "${DATA_DIR}/user_${user_id}/pid"
+    fi
+
+    # 查找并终止所有相关进程
+    for pid in $(ps aux | grep "node.*USER_ID=${user_id}" | grep -v grep | awk '{print $2}'); do
+        echo "终止进程 $pid..."
+        kill $pid 2>/dev/null || kill -9 $pid 2>/dev/null || true
+    done
+
+    echo "用户 ${user_id} 的实例已停止"
+}
+
+# 添加重启功能
+restart_user() {
+    local user_id=$1
+    if [ -z "$user_id" ]; then
+        echo "Error: 需要用户ID"
+        return 1
+    fi
+
+    echo "正在重启用户 ${user_id} 的实例..."
+    stop_user "$user_id"
+    sleep 2
+    start_user "$user_id"
+}
+
+# 移除用户实例
+remove_user() {
+    local user_id=$1
+    if [ -z "$user_id" ]; then
+        echo "Error: 需要用户ID"
+        return 1
+    fi
+
+    # 停止实例
+    stop_user "$user_id"
+
+    # 移除数据和配置
+    rm -rf "${DATA_DIR}/user_${user_id}"
+    rm -f "${CONFIG_DIR}/user_${user_id}.env"
+    rm -f "${LOG_DIR}/user_${user_id}.log"
+
+    echo "用户 ${user_id} 的所有数据已移除"
+}
+
+# 查看用户日志
+logs_user() {
+    local user_id=$1
+    if [ -z "$user_id" ]; then
+        echo "Error: 需要用户ID"
+        return 1
+    fi
+
+    cat "${LOG_DIR}/user_${user_id}.log"
+}
+
+# 修改 list_users 函数
+list_users() {
+    echo "用户数据目录："
+    ls -l "$DATA_DIR" | grep "user_" || echo "没有用户数据目录"
+    
+    echo -e "\n用户配置文件："
+    ls -l "$CONFIG_DIR" | grep "user_.*\.env" || echo "没有用户配置文件"
+    
+    echo -e "\n运行中的实例："
+    ps aux | grep "node.*USER_ID=" | grep -v grep || echo "没有运行中的实例"
+    
+    echo -e "\n已分配的端口："
+    for env_file in "${CONFIG_DIR}"/user_*.env; do
+        if [ -f "$env_file" ]; then
+            user_id=$(basename "$env_file" .env | sed 's/user_//')
+            port=$(grep "SERVER_PORT=" "$env_file" | cut -d'=' -f2)
+            if ps aux | grep "node.*USER_ID=${user_id}" | grep -v grep > /dev/null; then
+                status="运行中"
+            else
+                status="已停止"
+            fi
+            echo "用户 $user_id: 端口 $port ($status)"
+        fi
+    done
+}
+
+# 主命令处理
+case "$1" in
+    "create")
+        create_user "$2"
+        ;;
+    "remove")
+        remove_user "$2"
+        ;;
+    "start")
+        start_user "$2"
+        ;;
+    "stop")
+        stop_user "$2"
+        ;;
+    "restart")
+        restart_user "$2"
+        ;;
+    "logs")
+        logs_user "$2"
+        ;;
+    "list")
+        list_users
+        ;;
+    *)
+        echo "Usage: $0 {create|remove|start|stop|restart|logs|list} [user_id]"
+        echo
+        echo "Commands:"
+        echo "  create <user_id>  - 创建新用户实例"
+        echo "  remove <user_id>  - 移除用户实例"
+        echo "  start <user_id>   - 启动用户实例"
+        echo "  stop <user_id>    - 停止用户实例"
+        echo "  restart <user_id> - 重启用户实例"
+        echo "  logs <user_id>    - 查看用户日志"
+        echo "  list             - 列出所有用户实例"
+        exit 1
+        ;;
+esac 
